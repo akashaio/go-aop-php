@@ -10,18 +10,15 @@
 
 namespace Go\Console\Command;
 
-use Go\Core\AspectKernel;
 use Go\Instrument\ClassLoading\SourceTransformingLoader;
 use Go\Instrument\Transformer\FilterInjectorTransformer;
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * Console command for warming the cache
  */
-class WarmupCommand extends Command
+class CacheWarmupCommand extends BaseAspectCommand
 {
 
     /**
@@ -29,9 +26,9 @@ class WarmupCommand extends Command
      */
     protected function configure()
     {
+        parent::configure();
         $this
-            ->setName('goaop:warmup')
-            ->addArgument('loader', InputArgument::REQUIRED, "Path to the aspect loader file")
+            ->setName('aop:cache:warmup')
             ->setDescription("Warm up the cache with woven aspects")
             ->setHelp(<<<EOT
 Initializes the kernel and, if successful, warm up the cache for PHP
@@ -47,21 +44,8 @@ EOT
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $output->writeln("Loading aspect kernel for warmup...");
-        $loader = $input->getArgument('loader');
-        $path   = stream_resolve_include_path($loader);
-        if (!is_readable($path)) {
-            throw new \InvalidArgumentException("Invalid loader path: {$loader}");
-        }
-        include_once $path;
-
-        if (!class_exists('Go\Core\AspectKernel', false)) {
-            $message = "Kernel was not initialized yet, please configure it in the {$path}";
-            throw new \InvalidArgumentException($message);
-        }
-
-        $kernel  = AspectKernel::getInstance();
-        $options = $kernel->getOptions();
+        parent::execute($input, $output);
+        $options = $this->aspectKernel->getOptions();
 
         if (empty($options['cacheDir'])) {
             throw new \InvalidArgumentException("Cache warmer require the `cacheDir` options to be configured");
