@@ -198,7 +198,7 @@ class PointcutGrammar extends Grammar
 
             ->is('pointcutReference')
             ->call(function ($pointcutName) use ($container) {
-                return $container->getPointcut($pointcutName);
+                return new PointcutReference($container, $pointcutName);
             });
 
         $stringConverter = $this->getNodeToStringConverter();
