@@ -11,7 +11,9 @@
 namespace Go\Core;
 
 use Doctrine\Common\Annotations\Reader;
+use Go\Aop\Advisor;
 use Go\Aop\Aspect;
+use Go\Aop\Pointcut;
 use ReflectionClass;
 
 /**
@@ -76,30 +78,33 @@ class AspectLoader
      * Loads an aspect into the container with the help of aspect loaders
      *
      * @param \Go\Aop\Aspect $aspect
+     *
+     * @return array|Pointcut[]|Advisor[]
      */
     public function load(Aspect $aspect)
     {
-        $refAspect = new \ReflectionClass($aspect);
+        $loadedItems = array();
+        $refAspect   = new \ReflectionClass($aspect);
 
         if (!empty($this->loaders[AspectLoaderExtension::TARGET_CLASS])) {
-            $this->loadFrom($aspect, $refAspect, $this->loaders[AspectLoaderExtension::TARGET_CLASS]);
+            $loadedItems += $this->loadFrom($aspect, $refAspect, $this->loaders[AspectLoaderExtension::TARGET_CLASS]);
         }
 
         if (!empty($this->loaders[AspectLoaderExtension::TARGET_METHOD])) {
             $refMethods = $refAspect->getMethods();
             foreach ($refMethods as $refMethod) {
-                $this->loadFrom($aspect, $refMethod, $this->loaders[AspectLoaderExtension::TARGET_METHOD]);
+                $loadedItems += $this->loadFrom($aspect, $refMethod, $this->loaders[AspectLoaderExtension::TARGET_METHOD]);
             }
         }
 
         if (!empty($this->loaders[AspectLoaderExtension::TARGET_PROPERTY])) {
             $refProperties = $refAspect->getProperties();
             foreach ($refProperties as $refProperty) {
-                $this->loadFrom($aspect, $refProperty, $this->loaders[AspectLoaderExtension::TARGET_PROPERTY]);
+                $loadedItems += $this->loadFrom($aspect, $refProperty, $this->loaders[AspectLoaderExtension::TARGET_PROPERTY]);
             }
         }
 
-        $this->loadedResources[] = $refAspect->getFileName();
+        return $loadedItems;
     }
 
     /**
@@ -116,10 +121,20 @@ class AspectLoader
             return;
         }
 
+        $loadedItems = array();
         foreach ($this->container->getByTag('aspect') as $aspect) {
-            $ref = new ReflectionClass($aspect);
-            if (in_array($ref->getFileName(), $resourcesToLoad)) {
-                $this->load($aspect);
+            $aspectReflection = new ReflectionClass($aspect);
+            $aspectFileName   = $aspectReflection->getFileName();
+            if (in_array($aspectFileName, $resourcesToLoad)) {
+                $loadedItems += $this->load($aspect);
+            }
+        }
+        foreach ($loadedItems as $itemId => $item) {
+            if ($item instanceof Pointcut) {
+                $this->container->registerPointcut($item, $itemId);
+            }
+            if ($item instanceof Advisor) {
+                $this->container->registerAdvisor($item, $itemId);
             }
         }
 
@@ -134,9 +149,12 @@ class AspectLoader
      * @param array|AspectLoaderExtension[] $loaders List of loaders that can produce advisors from aspect class
      *
      * @throws \InvalidArgumentException If kind of loader isn't supported
+     *
+     * @return array|Pointcut[]|Advisor[]
      */
     protected function loadFrom(Aspect $aspect, $refPoint, array $loaders)
     {
+        $loadedItems = array();
 
         foreach ($loaders as $loader) {
 
@@ -145,7 +163,7 @@ class AspectLoader
 
                 case AspectLoaderExtension::KIND_REFLECTION:
                     if ($loader->supports($aspect, $refPoint)) {
-                        $loader->load($this->container, $aspect, $refPoint);
+                        $loadedItems += $loader->load($aspect, $refPoint);
                     }
                     break;
 
@@ -153,7 +171,7 @@ class AspectLoader
                     $annotations = $this->getAnnotations($refPoint);
                     foreach ($annotations as $annotation) {
                         if ($loader->supports($aspect, $refPoint, $annotation)) {
-                            $loader->load($this->container, $aspect, $refPoint, $annotation);
+                            $loadedItems += $loader->load($aspect, $refPoint, $annotation);
                         }
                     }
                     break;
@@ -163,6 +181,8 @@ class AspectLoader
 
             }
         }
+
+        return $loadedItems;
     }
 
     /**
