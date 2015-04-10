@@ -2,7 +2,7 @@
 /**
  * Go! AOP framework
  *
- * @copyright Copyright 2013, Lisachenko Alexander <lisachenko.it@gmail.com>
+ * @copyright Copyright 2015, Lisachenko Alexander <lisachenko.it@gmail.com>
  *
  * This source file is subject to the license that is bundled
  * with this source code in the file LICENSE.
@@ -10,15 +10,16 @@
 
 namespace Go\Console\Command;
 
+use Go\Aop\Advisor;
 use Go\Aop\Aspect;
-use Go\Instrument\ClassLoading\SourceTransformingLoader;
-use Go\Instrument\Transformer\FilterInjectorTransformer;
+use Go\Aop\Pointcut;
+use Go\Core\AspectLoader;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /**
- * Console command for warming the cache
+ * Console command for querying an information about aspects
  */
 class AspectDebugCommand extends BaseAspectCommand
 {
@@ -64,23 +65,21 @@ EOT
         $output->writeln($this->getHelper('formatter')->formatSection('AOP', 'Registered aspects'));
 
         $aspectList = $container->getByTag('aspect');
-        $maxName    = strlen('id');
         $maxAspect  = strlen('aspect');
 
-        foreach ($aspectList as $aspectId => $aspect) {
+        foreach ($aspectList as $aspect) {
             $refAspect = new \ReflectionObject($aspect);
-            $maxName   = max($maxName, strlen($aspectId));
             $maxAspect = max($maxAspect, strlen($refAspect->getName()));
         }
 
-        $format       = '%-' . $maxName . 's %-' . $maxAspect . 's';
-        $formatHeader = '%-' . ($maxName + 19) . 's %-' . ($maxAspect + 19) . 's';
-        $output->writeln(sprintf($formatHeader, '<comment>Id</comment>', '<comment>Aspect</comment>'));
+        $format       = '%-' . $maxAspect . 's';
+        $formatHeader = '%-' . ($maxAspect + 19) . 's';
+        $output->writeln(sprintf($formatHeader, '<comment>Aspect</comment>') . PHP_EOL);
 
-        foreach ($aspectList as $aspectId => $aspect) {
+        foreach ($aspectList as $aspect) {
             $refAspect  = new \ReflectionObject($aspect);
             $aspectName = $refAspect->getName();
-            $output->writeln(sprintf($format, $aspectId, $aspectName), OutputInterface::OUTPUT_RAW);
+            $output->writeln(sprintf($format, $aspectName), OutputInterface::OUTPUT_RAW);
         }
     }
 
@@ -88,17 +87,19 @@ EOT
      * Shows an information about concrete aspect
      *
      * @param OutputInterface $output
-     * @param string $aspectId
+     * @param string $aspectName
      */
-    private function showAspect(OutputInterface $output, $aspectId)
+    private function showAspect(OutputInterface $output, $aspectName)
     {
-        $container = $this->aspectKernel->getContainer();
-        $aspect    = $container->get($aspectId);
+        $container    = $this->aspectKernel->getContainer();
+        /** @var AspectLoader $aspectLoader */
+        $aspectLoader = $container->get('aspect.loader');
+        $aspect       = $container->getAspect($aspectName);
         if (!$aspect instanceof Aspect) {
-            throw new \InvalidArgumentException("Service {$aspectId} is not valid aspect!");
+            throw new \InvalidArgumentException("Service {$aspectName} is not valid aspect!");
         }
 
-        $output->writeln($this->getHelper('formatter')->formatSection('AOP', sprintf('Aspect "%s"', $aspectId)));
+        $output->writeln($this->getHelper('formatter')->formatSection('AOP', "Aspect information"));
         $refAspect = new \ReflectionObject($aspect);
 
         $output->write('<comment>Class</comment>         ');
@@ -107,17 +108,20 @@ EOT
         $output->write('<comment>Description</comment>         ');
         $output->writeln($this->getPrettyText($refAspect->getDocComment()), OutputInterface::OUTPUT_RAW);
 
-//        $output->write('<comment>Host</comment>         ');
-//        $output->writeln($host, OutputInterface::OUTPUT_RAW);
-//
-//        $output->write('<comment>Scheme</comment>       ');
-//        $output->writeln($scheme, OutputInterface::OUTPUT_RAW);
-//
-//        $output->write('<comment>Method</comment>       ');
-//        $output->writeln($method, OutputInterface::OUTPUT_RAW);
-//
-//        $output->write('<comment>Class</comment>        ');
-//        $output->writeln(get_class($route), OutputInterface::OUTPUT_RAW);
+        $output->writeln('<comment>Pointcuts and advices</comment>');
+
+        $aspectItems = $aspectLoader->load($aspect);
+        foreach ($aspectItems as $itemId => $item) {
+            $type = 'Unknown';
+            if ($item instanceof Pointcut) {
+                $type = 'Pointcut';
+            }
+            if ($item instanceof Advisor) {
+                $type = 'Advisor';
+            }
+
+            $output->writeln("$type <comment>$itemId</comment>");
+        }
     }
 
     /**

@@ -44,14 +44,17 @@ class AspectLoader
     protected $annotationReader = null;
 
     /**
-     * List of resources that was loaded
+     * List of aspects that was loaded
      *
      * @var array
      */
-    protected $loadedResources = array();
+    protected $loadedAspects = array();
 
     /**
      * Loader constructor
+     *
+     * @param AspectContainer $container Instance of container to store pointcuts and advisors
+     * @param Reader $reader Reader for annotations that is used for aspects
      */
     public function __construct(AspectContainer $container, Reader $reader)
     {
@@ -75,9 +78,11 @@ class AspectLoader
     }
 
     /**
-     * Loads an aspect into the container with the help of aspect loaders
+     * Loads an aspect with the help of aspect loaders, but don't register it in the container
      *
-     * @param \Go\Aop\Aspect $aspect
+     * @see loadAndRegister() method for registration
+     *
+     * @param \Go\Aop\Aspect $aspect Aspect to load
      *
      * @return array|Pointcut[]|Advisor[]
      */
@@ -108,27 +113,13 @@ class AspectLoader
     }
 
     /**
-     * Load pointcuts into container
+     * Loads and register all items of aspect in the container
      *
-     * There is no need to always load pointcuts, so we delay loading
+     * @param Aspect $aspect
      */
-    public function loadAdvisorsAndPointcuts()
+    public function loadAndRegister(Aspect $aspect)
     {
-        $containerResources = $this->container->getResources();
-        $resourcesToLoad    = array_diff($containerResources, $this->loadedResources);
-
-        if (!$resourcesToLoad) {
-            return;
-        }
-
-        $loadedItems = array();
-        foreach ($this->container->getByTag('aspect') as $aspect) {
-            $aspectReflection = new ReflectionClass($aspect);
-            $aspectFileName   = $aspectReflection->getFileName();
-            if (in_array($aspectFileName, $resourcesToLoad)) {
-                $loadedItems += $this->load($aspect);
-            }
-        }
+        $loadedItems = $this->load($aspect);
         foreach ($loadedItems as $itemId => $item) {
             if ($item instanceof Pointcut) {
                 $this->container->registerPointcut($item, $itemId);
@@ -138,7 +129,26 @@ class AspectLoader
             }
         }
 
-        $this->loadedResources = $containerResources;
+        $aspectClass = get_class($aspect);
+        $this->loadedAspects[$aspectClass] = $aspectClass;
+    }
+
+    /**
+     * Returns list of unloaded aspects in the container
+     *
+     * @return array|Aspect[]
+     */
+    public function getUnloadedAspects()
+    {
+        $unloadedAspects = array();
+
+        foreach ($this->container->getByTag('aspect') as $aspect) {
+            if (!isset($this->loadedAspects[get_class($aspect)])) {
+                $unloadedAspects[] = $aspect;
+            }
+        }
+
+        return $unloadedAspects;
     }
 
     /**

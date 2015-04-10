@@ -9,6 +9,7 @@
  * with this source code in the file LICENSE.
  */
 
+use Go\Console\Command\AdvisorDebugCommand;
 use Go\Console\Command\AspectDebugCommand;
 use Go\Console\Command\CacheWarmupCommand;
 use Go\Core\AspectKernel;
@@ -38,4 +39,5 @@ if (!class_exists('Symfony\Component\Console\Application')) {
 $app = new Application('Go! AOP', AspectKernel::VERSION);
 $app->add(new CacheWarmupCommand());
 $app->add(new AspectDebugCommand());
+$app->add(new AdvisorDebugCommand());
 $app->run();
